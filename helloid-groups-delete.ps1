@@ -7,382 +7,441 @@ $HelloIDGroupExclusionFilter = "Users"
 $HelloIDGroupInclusionFilter = "yourgroupfilter"
 $deleteErrorsCritical = $false
 ############################################################## Global Functions ##############################################################
-function Write-HidStatus{​
+
+function Write-HidStatus{
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
         $Message,
+        
         [Parameter(Mandatory=$true)]
         [String]
         $Event
     )
-    if([String]::IsNullOrEmpty($portalBaseUrl) -eq $true){​
+    if([String]::IsNullOrEmpty($portalBaseUrl) -eq $true){
         Write-Output ($Message)
-    }​else{​
+    }else{
         #Hid-Write-Status -Message $Message -Event $Event
         Write-Output ($Message)
-    }​
-}​
-function Write-HidSummary{​
+    }
+}
+
+function Write-HidSummary{
     [cmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
         $Message,
+
         [Parameter(Mandatory=$true)]
         [String]
         $Event
     )
-    if([String]::IsNullOrEmpty($portalBaseUrl) -eq $true){​
+    if([String]::IsNullOrEmpty($portalBaseUrl) -eq $true){
         Write-Output ($Message)
-    }​else{​
+    }else{
         #Hid-Write-Summary -Message $Message -Event $Event
         Write-Output ($Message)
-    }​
-}​
+    }
+}
+
 ############################################################## HelloID Functions ##############################################################
+
 # Create function to create new web request key
-function New-WebRequestKey{​
+function New-WebRequestKey{
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)] 
         [String] 
         $ApiKey,
+
         [Parameter(Mandatory=$true)] 
         [String] 
         $ApiSecret,
+
         [Parameter(Mandatory=$true)]
         [Ref]
         $Response
     )
-    try{​
+    try{
         Write-HidStatus -Message "Creating HelloID API key..." -Event Information
         $Response.Value = $null
-        $pair = "${​ApiKey}​:${​ApiSecret}​"
+        $pair = "${ApiKey}:${ApiSecret}"
         $bytes = [System.Text.Encoding]::ASCII.GetBytes($pair)
         $base64 = [System.Convert]::ToBase64String($bytes)
         $key = "Basic $base64"
         $Response.Value = $key
         Write-HidStatus -Message "Successfully created HelloID API key" -Event Success
-    }​catch{​
-        throw "Could not create HelloID API key, errorcode: 0x$('{​0:X8}​' -f $_.Exception.HResult), message: $($_.Exception.Message)"
-    }​
-}​
+    }catch{
+        throw "Could not create HelloID API key, errorcode: 0x$('{0:X8}' -f $_.Exception.HResult), message: $($_.Exception.Message)"
+    }
+}
+
 # Create function for Rest method
-function Invoke-HidRestMethod{​
+function Invoke-HidRestMethod{
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)] 
         [String] 
         $Method,
+
         [Parameter(Mandatory=$true)] 
         [String] 
         $Uri,
+
         [Parameter(Mandatory=$false)] 
         [String] 
         $ContentType,
+
         [Parameter(Mandatory=$false)] 
         [String] 
         $Key,
+
         [Parameter(Mandatory=$false)] 
         $Body,
+
         [Parameter(Mandatory=$true)]
         [Ref]
         $Response,
+
         [Parameter(Mandatory=$false)] 
         $Credential,
+
         [Parameter(Mandatory=$false)]
         $Headers,
+
         [Parameter(Mandatory=$false)]
         $PageSize
     )
+
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
-    $parameters = @{​}​
-    if($Body){​
-        $parameters += @{​
+ 
+    $parameters = @{}
+    if($Body){
+        $parameters += @{
             Body = $Body
-        }​
-    }​
-    if($ContentType){​
-        $parameters += @{​
+        }
+    }
+    if($ContentType){
+        $parameters += @{
             ContentType = $ContentType
-        }​
-    }​
-    if($Key){​
-        $header = @{​}​
+        }
+    }
+    if($Key){
+        $header = @{}
         $header.Add("authorization",$Key)
-        $parameters += @{​
+        $parameters += @{
             Headers = $header
-        }​
-    }​
-    if($Credential){​
-        $parameters += @{​
+        }
+    }
+    if($Credential){
+        $parameters += @{
             Credential = $Credential
-        }​
-    }​
-    if($Headers -and !$key){​
-        $parameters += @{​
+        }
+    }
+    if($Headers -and !$key){
+        $parameters += @{
             Headers = $Headers
-        }​
-    }​
+        }
+    }
     $Response.Value = $null
-    try{​
-        if($Uri.EndsWith("/") -eq $true){​
+
+    try{
+        if($Uri.EndsWith("/") -eq $true){
             Write-HidStatus -Message ("Failed::Get::$Uri::Uri invalid") -Event Error
             return
-        }​
-        if($PageSize -ne $null){​
+        }
+
+        if($PageSize -ne $null){
             $take = $PageSize
             $skip = 0
-            if($Uri -match '\?'){​
+            if($Uri -match '\?'){
                 $uriFirstPage = $Uri + "&skip=$skip&take=$take"
-            }​else{​
+            }else{
                 $uriFirstPage = $Uri + "?skip=$skip&take=$take"
-            }​
+            }
             $servicePoint = [System.Net.ServicePointManager]::FindServicePoint($uriFirstPage)
             $dataset = Invoke-RestMethod -Method $Method -Uri $uriFirstPage @parameters
-            if($dataset.pageData -ne $null){​
+            if($dataset.pageData -ne $null){
                 $dataset = $dataset.pageData
-            }​
+            }
             $result = $servicePoint.CloseConnectionGroup("")
+
             $Response.Value += $dataset
             Write-HidStatus -Message ("Successfully retrieved data from $uriFirstPage") -Event Information
+            
             $skip += $take
-            while($dataset.Count -eq $take){​
-                if($Uri -match '\?'){​
+            while($dataset.Count -eq $take){
+                if($Uri -match '\?'){
                     $uriPage = $Uri + "&skip=$skip&take=$take"
-                }​else{​
+                }else{
                     $uriPage = $Uri + "?skip=$skip&take=$take"
-                }​
+                }
+        
                 $servicePoint = [System.Net.ServicePointManager]::FindServicePoint($uriPage)
                 $dataset = Invoke-RestMethod -Method $Method -Uri $uriPage @parameters
-                if($dataset.pageData -ne $null){​
+                if($dataset.pageData -ne $null){
                     $dataset = $dataset.pageData
-                }​
+                }
                 $result = $servicePoint.CloseConnectionGroup("")
+        
                 $skip += $take
                 $Response.Value += $dataset
                 Write-HidStatus -Message "Successfully retrieved data from $uriPage" -Event Information
-            }​
-        }​else{​
+            }
+        }else{
             $Response.Value = $null
             $servicePoint = [System.Net.ServicePointManager]::FindServicePoint($Uri)
             $Response.Value = Invoke-RestMethod -Method Get -Uri $Uri @parameters
             $result = $servicePoint.CloseConnectionGroup("") 
-        }​
-    }​catch{​
+        }
+    }catch{
         throw $_
-    }​
-}​
+    }
+}
+
 # Create function for web request
-function Invoke-HidWebRequest{​
+function Invoke-HidWebRequest{
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)] 
         [String] 
         $Method,
+
         [Parameter(Mandatory=$true)] 
         [String] 
         $Uri,
+
         [Parameter(Mandatory=$false)] 
         [String] 
         $ContentType,
+
         [Parameter(Mandatory=$false)] 
         [String] 
         $Key,
+
         [Parameter(Mandatory=$false)] 
         $Body,
+
         [Parameter(Mandatory = $true)]
         [Ref]
         $Response,
+
         [Parameter(Mandatory=$false)] 
         $Credential,
+
         [Parameter(Mandatory=$false)]
         $Headers
     )  
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls10 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
-    $parameters = @{​
+
+    $parameters = @{
         Uri = $Uri
         Method = $Method
-    }​
-    if($Body){​
-        $parameters += @{​
+    }
+    if($Body){
+        $parameters += @{
             Body = $Body
-        }​
-    }​
-    if($ContentType){​
-        $parameters += @{​
+        }
+    }
+    if($ContentType){
+        $parameters += @{
             ContentType = $ContentType
-        }​
-    }​
-    if($Key){​
-        $header = @{​}​
+        }
+    }
+    if($Key){
+        $header = @{}
         $header.Add("authorization",$Key)
-        $parameters += @{​
+        $parameters += @{
             Headers = $header
-        }​
-    }​
-    if($Credential){​
-        $parameters += @{​
+        }
+    }
+    if($Credential){
+        $parameters += @{
             Credential = $Credential
-        }​
-    }​
-    if($Headers -and !$key){​
-        $parameters += @{​
+        }
+    }
+    if($Headers -and !$key){
+        $parameters += @{
             Headers = $Headers
-        }​
-    }​
-    if($PSVersionTable.PSVersion.ToString() -le "6.0"){​
-        $parameters += @{​
+        }
+    }
+    if($PSVersionTable.PSVersion.ToString() -le "6.0"){
+        $parameters += @{
             UseBasicParsing = $true
-        }​
-    }​
-    try{​
+        }
+    }
+
+    try{
         $Response.Value = $null
         $servicePoint = [System.Net.ServicePointManager]::FindServicePoint($Uri)
         $webRequest = Invoke-WebRequest @parameters
         $result = $servicePoint.CloseConnectionGroup("")
         $Response.Value = $webRequest
-    }​catch{​
+    }catch{
         throw $_
-    }​
-}​
+    }
+}
+
 # Function for retrieving groups
-function Get-HIDGroups{​
+function Get-HIDGroups{
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)] 
         [String] 
         $PortalBaseUrl,
+
         [Parameter(Mandatory=$true)] 
         $Headers,
+
         [Parameter(Mandatory=$false)] 
         $InclusionFilter,    
+
         [Parameter(Mandatory=$false)] 
         $ExclusionFilter,    
+
         [Parameter(Mandatory=$true)]
         [Ref]
         $Response
     )
-    try{​
+    try{
         $Response.Value = $null
         Write-HidStatus -Message "Gathering groups from HelloID..." -Event Information
-        if($PortalBaseUrl.EndsWith("/")){​
+        if($PortalBaseUrl.EndsWith("/")){
             $uri = ($PortalBaseUrl +"api/v1/groups")
-        }​else{​
+        }else{
             $uri = ($PortalBaseUrl +"/api/v1/groups")
-        }​
+        }
+
         $groups = New-Object PSCustomObject
         Invoke-HidRestMethod -Response ([Ref]$groups) -Method Get -Uri $uri -Headers $Headers -ContentType "application/json" -PageSize 500
-        if(![string]::IsNullOrEmpty($InclusionFilter)){​
+
+        if(![string]::IsNullOrEmpty($InclusionFilter)){
             Write-HidStatus -Message "Found [$($groups.Count)] groups. Filtering out groups with [$InclusionFilter] NOT in their name." -Event Warning
-            $groups = foreach($group in $groups){​
-                if($group.name -like "*$InclusionFilter*"){​
+            $groups = foreach($group in $groups){
+                if($group.name -like "*$InclusionFilter*"){
                     $group
-                }​
-            }​
-        }​
-        if(![string]::IsNullOrEmpty($ExclusionFilter)){​
+                }
+            }
+        }
+
+        if(![string]::IsNullOrEmpty($ExclusionFilter)){
             Write-HidStatus -Message "Found [$($groups.Count)] groups. Filtering out groups with [$ExclusionFilter] in their name." -Event Warning
-            $groups = foreach($group in $groups){​
-                if($group.name -notlike "*$ExclusionFilter*"){​
+            $groups = foreach($group in $groups){
+                if($group.name -notlike "*$ExclusionFilter*"){
                     $group
-                }​
-            }​
-        }​
+                }
+            }
+        }
+
         $Response.Value = $groups
         Write-HidStatus -Message "Finished gathering groups from HelloID, found [$($groups.Count)] groups" -Event Success
-    }​catch{​
-        throw "Could not gather groups from HelloID, errorcode: '0x$('{​0:X8}​' -f $_.Exception.HResult)', message: $($_.Exception.Message)"
-    }​
-}​
-function Remove-HIDGroup{​
+    }catch{
+        throw "Could not gather groups from HelloID, errorcode: '0x$('{0:X8}' -f $_.Exception.HResult)', message: $($_.Exception.Message)"
+    }
+}
+
+function Remove-HIDGroup{
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)] 
         [String] 
         $PortalBaseUrl,
+
         [Parameter(Mandatory=$true)] 
         $Headers,
+
         [Parameter(Mandatory=$true)]
         [String]
         $GroupName,
+
         [Parameter(Mandatory=$false)]
         $GroupGuid,
+
         [Parameter(Mandatory=$false)]
         [Boolean]
         $Logging,
+
         [Parameter(Mandatory=$true)]
         [Ref]
         $Response
     )
-    try{​
+    try{
         $Response.Value = $null
-        if($Logging){​
+        if($Logging){
             Write-HidStatus -Message "Deleting HelloID group '$GroupName'..." -Event Information
-        }​
-        if($PortalBaseUrl.EndsWith("/")){​
+        }
+        
+        if($PortalBaseUrl.EndsWith("/")){
             $uri = ($PortalBaseUrl + "api/v1/groups/")
-        }​else{​
+        }else{
             $uri = ($PortalBaseUrl + "/api/v1/groups/")
-        }​
-        if(![string]::IsNullOrEmpty($GroupGUID)){​
+        }
+
+        if(![string]::IsNullOrEmpty($GroupGUID)){
             $uri = ($uri + "$GroupGUID")
-        }​else{​
+        }else{
             $uri = ($uri + "$GroupName")
-        }​
+        }
+
         $removedGroup = New-Object PSCustomObject
         Invoke-HidWebRequest -Response ([Ref]$removedGroup) -Method Delete -Uri $uri -Headers $Headers -ContentType "application/json"
         $Response.Value = $removedGroup
-        if($Logging){​
+        
+        if($Logging){
             Write-HidStatus -Message "Successfully removed HelloID group '$GroupName'" -Event Success
-        }​
-    }​catch{​
-        if($_.Exception.Message -eq "The remote server returned an error: (400) Bad Request."){​
+        }
+    }catch{
+        if($_.Exception.Message -eq "The remote server returned an error: (400) Bad Request."){
             $message = ($_.ErrorDetails.Message | ConvertFrom-Json).message
-            throw "Could not delete HelloID group '$GroupName', errorcode: 'x$('{​0:X8}​' -f $_.Exception.HResult), message: $($_.Exception.Message)$message"
-        }​else{​
-            throw "Could not  delete HelloID group '$GroupName', errorcode: 'x$('{​0:X8}​' -f $_.Exception.HResult), message: $($_.Exception.Message)"
-        }​
-    }​
-}​
+            throw "Could not delete HelloID group '$GroupName', errorcode: 'x$('{0:X8}' -f $_.Exception.HResult), message: $($_.Exception.Message) $message"
+        }else{
+            throw "Could not  delete HelloID group '$GroupName', errorcode: 'x$('{0:X8}' -f $_.Exception.HResult), message: $($_.Exception.Message)"
+        }
+    }
+}
+
 ##########-------------------- Script --------------------##########
+
 # HelloID API - Get Web request key
-try{​
+try{
     $key = New-Object PSCustomObject
     New-WebRequestKey -ApiKey $HelloIDApiKey -ApiSecret $HelloIDApiSecret -Response ([Ref]$key)
-    $headers = @{​}​
+    $headers = @{}
     $headers.Add("authorization",$key)
-}​catch{​
+}catch{
     throw $_
-}​
+}
+
 # HelloID API - Get HelloID groups
-try{​
+try{
     $hidGroups = New-Object PSCustomObject
     Get-HIDGroups -PortalBaseUrl $portalBaseUrl -Headers $headers -Response ([Ref]$hidGroups) -InclusionFilter $HelloIDGroupInclusionFilter -ExclusionFilter $HelloIDGroupExclusionFilter
-}​catch{​
+}catch{
     throw $_
-}​
+}
+
 #-------------------- Delete groups --------------------#
 $deleteSuccess = 0
 $deleteFailed = 0
-foreach($hidGroup in $hidGroups){​
-    try{​
+foreach($hidGroup in $hidGroups){
+    try{
         $deletedHidGroup = New-Object PSCustomObject
         Remove-HIDGroup -GroupName $hidGroup.name -GroupGuid $hidGroup.groupGuid -PortalBaseUrl $portalBaseUrl -Headers $headers -Response ([Ref]$deletedHidGroup) -Logging:$false
         $deleteSuccess++
-    }​catch{​
+    }catch{
         $deleteFailed++
-        if($deleteErrorsCritical){​
+        if($deleteErrorsCritical){
             throw $_
-        }​else{​
+        }else{
             Write-HidStatus -Message $_ -Event Error
-        }​
-    }​
-}​
-if($deleteSuccess -gt 0){​
+        }
+    }
+}
+
+if($deleteSuccess -gt 0){
     Write-HidStatus -Message "Finished deleting [$($deleteSuccess)] HelloID groups." -Event Success
     Write-HidSummary -Message "Successfully deleted [$($deleteSuccess)] HelloID groups, check the Progress for more details." -Event Success
-}​else{​
+}else{
     Write-HidStatus -Message "No HelloID groups to delete." -Event Success
     Write-HidSummary -Message "There were no HelloID groups to delete, check the Progress for more details." -Event Success
-}​
+}
